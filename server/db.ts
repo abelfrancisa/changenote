@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, sessions, improvedNotes, flashcards, summaries } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,128 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+/**
+ * Create a new session with improved notes, flashcards, and summary.
+ */
+export async function createSession(data: {
+  userId: number;
+  subject: string;
+  inputText: string;
+  improvedNotesContent: string;
+  flashcardsContent: string;
+  summaryContent: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Insert session
+  const sessionResult = await db
+    .insert(sessions)
+    .values({
+      userId: data.userId,
+      subject: data.subject,
+      inputText: data.inputText,
+    });
+
+  const sessionId = sessionResult[0].insertId as number;
+
+  // Insert related records
+  await Promise.all([
+    db.insert(improvedNotes).values({
+      sessionId,
+      content: data.improvedNotesContent,
+    }),
+    db.insert(flashcards).values({
+      sessionId,
+      cards: data.flashcardsContent,
+    }),
+    db.insert(summaries).values({
+      sessionId,
+      content: data.summaryContent,
+    }),
+  ]);
+
+  return sessionId;
+}
+
+/**
+ * Get a session with all related data (improved notes, flashcards, summary).
+ */
+export async function getSessionWithContent(sessionId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [sessionData] = await db
+    .select()
+    .from(sessions)
+    .where(eq(sessions.id, sessionId))
+    .limit(1);
+
+  if (!sessionData) return null;
+
+  const [notesData] = await db
+    .select()
+    .from(improvedNotes)
+    .where(eq(improvedNotes.sessionId, sessionId))
+    .limit(1);
+
+  const [flashcardsData] = await db
+    .select()
+    .from(flashcards)
+    .where(eq(flashcards.sessionId, sessionId))
+    .limit(1);
+
+  const [summaryData] = await db
+    .select()
+    .from(summaries)
+    .where(eq(summaries.sessionId, sessionId))
+    .limit(1);
+
+  return {
+    session: sessionData,
+    improvedNotes: notesData?.content || "",
+    flashcards: flashcardsData?.cards || "[]",
+    summary: summaryData?.content || "",
+  };
+}
+
+/**
+ * Get all sessions for a user with pagination.
+ */
+export async function getUserSessions(userId: number, limit: number = 20, offset: number = 0) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db
+    .select()
+    .from(sessions)
+    .where(eq(sessions.userId, userId))
+    .orderBy(sessions.createdAt)
+    .limit(limit)
+    .offset(offset);
+
+  return result;
+}
+
+/**
+ * Delete a session and all related data.
+ */
+export async function deleteSession(sessionId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db.delete(sessions).where(eq(sessions.id, sessionId));
+}
+
+/**
+ * Update session input text (for reload functionality).
+ */
+export async function updateSessionInput(sessionId: number, inputText: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  await db
+    .update(sessions)
+    .set({ inputText, updatedAt: new Date() })
+    .where(eq(sessions.id, sessionId));
+}
