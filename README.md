@@ -1,4 +1,8 @@
 ChangeNote
+
+[**Click here for the Live Demo!**](https://abelfrancisa.github.io/changenote/)
+
+---
 A production-ready single-page website that converts pasted GCSE revision notes into improved notes, flashcards, and exam-style summaries using Claude AI.
 Built on Manus platform with React, Node.js, and TypeScript.
 Features
